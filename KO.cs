@@ -18,7 +18,7 @@ namespace KO
 		void Loop();
 		bool IsFinish();
 	}
-
+	
 	public class KOWait : IKOAction
 	{
 		DateTime time;
@@ -44,31 +44,50 @@ namespace KO
 		}
 	}
 
+	public class KOCoroutine : IKOAction
+	{
+		private bool m_isFinish = false;
+		public void Loop()
+		{
+		}
+		public bool IsFinish()
+		{
+			return m_isFinish;
+		}
+		public void Finish()
+		{
+			m_isFinish = true;
+		}
+	}
+	
 	public class KO
 	{
 		public IEnumerator<object> enumerator;
 		public IKOAction action;
-		public KO(IEnumerator<object> enumerator, IKOAction action)
+		public KOCoroutine co;
+		public KO(IEnumerator<object> enumerator, IKOAction action, KOCoroutine co)
 		{
 			this.enumerator = enumerator;
 			this.action = action;
+			this.co = co;
 		}
 	}
-
+	
 	public class KOMsg
 	{
 		public object msg;
 	}
-
+	
 	public class KOMgr
 	{
 		int total_id = 0;
 		Dictionary<int, KO> m_data = new Dictionary<int, KO>();
-		public int Count { get {return m_data.Count; }}
+		Dictionary<int, KO> m_newCo = new Dictionary<int, KO>();
+		public int Count { get {return m_data.Count + m_newCo.Count; }}
 		public KOMgr ()
 		{
 		}
-
+		
 		public void Loop()
 		{
 			List<int> finish = new List<int>();
@@ -86,29 +105,39 @@ namespace KO
 					}
 					else
 					{
+						pair.Value.co.Finish();
 						finish.Add(pair.Key);
 					}
 				}
 			}
-
+			
 			foreach(int id in finish)
 			{
 				m_data.Remove(id);
 			}
+			foreach(KeyValuePair<int, KO> pair in m_newCo)
+			{
+				m_data.Add(pair.Key, pair.Value);
+			}
+			m_newCo.Clear ();
 		}
-
-		public void StartCoroutine(IEnumerator<object> enumerator)
+		
+		public KOCoroutine StartCoroutine(IEnumerator<object> enumerator)
 		{
+			KOCoroutine co = new KOCoroutine ();
 			if (!enumerator.MoveNext())
 			{
-				return;
+				co.Finish();
+				return co;
 			}
 			IKOAction action = enumerator.Current as IKOAction;
-			KO ko = new KO(enumerator, action);
-			m_data.Add(++this.total_id, ko);
+			KO ko = new KO(enumerator, action, co);
+			m_newCo.Add(++this.total_id, ko);
+
+			return co;
 		}
 	}
-
+	
 	public static class KOHelp
 	{
 		public static KOWait WaitSecond(int second, KOMsg msg)
@@ -116,31 +145,50 @@ namespace KO
 			return new KOWait(second, msg);
 		}
 	}
-
+	
 	public class KOTest
 	{
+		static KOMgr ko = new KOMgr();
+		public static IEnumerator<object> Test3()
+		{
+			KOMsg msg = new KOMsg();
+			System.Console.Write(string.Format("Test3 Start-------{0}\n", DateTime.Now.ToString()));
+			yield return KOHelp.WaitSecond(2, msg);
+			System.Console.Write(string.Format("Test3 Step1-------{0}\n", msg.msg.ToString()));
+			yield return KOHelp.WaitSecond(3, msg);
+			System.Console.Write(string.Format("Test3 End  -------{0}\n", msg.msg.ToString()));;
+		}
+		public static IEnumerator<object> Test2()
+		{
+			KOMsg msg = new KOMsg();
+			System.Console.Write(string.Format("Test2 Start-------{0}\n", DateTime.Now.ToString()));
+			yield return ko.StartCoroutine(Test3());
+			yield return KOHelp.WaitSecond(2, msg);
+			System.Console.Write(string.Format("Test2 Step1-------{0}\n", msg.msg.ToString()));
+			yield return KOHelp.WaitSecond(3, msg);
+			System.Console.Write(string.Format("Test2 End  -------{0}\n", msg.msg.ToString()));;
+		}
 		public static IEnumerator<object> Test()
 		{
 			KOMsg msg = new KOMsg();
 			System.Console.Write(string.Format("Test Start-------{0}\n", DateTime.Now.ToString()));
 			yield return KOHelp.WaitSecond(2, msg);
+			yield return ko.StartCoroutine(Test2());
 			System.Console.Write(string.Format("Test Step1-------{0}\n", msg.msg.ToString()));
 			yield return KOHelp.WaitSecond(3, msg);
 			System.Console.Write(string.Format("Test End  -------{0}\n", msg.msg.ToString()));;
 		}
-
+		
 		public static void Main()
 		{
-			KOMgr ko = new KOMgr();
 			ko.StartCoroutine(Test());
 			System.Console.Write("Main Start-------\n");
 			while(ko.Count > 0)
 			{
 				ko.Loop();
 			}
-
+			
 			System.Console.Write("Main End-------\n");
 		}
 	}
 }
-
