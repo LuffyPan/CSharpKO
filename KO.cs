@@ -97,6 +97,11 @@ namespace KO
 			}
 			foreach(KeyValuePair<int, KO> pair in m_data)
 			{
+				if (pair.Value.co.IsFinish())
+				{
+					finish.Add(pair.Key);
+					continue;
+				}
 				if (pair.Value.action.IsFinish())
 				{
 					if (pair.Value.enumerator.MoveNext())
